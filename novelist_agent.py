@@ -81,9 +81,15 @@ class CustomAssistantAgent(autogen.AssistantAgent):
             return None
             
         system_message = self.system_message
-        last_message = messages[-1]['content']
         
-        api_messages = create_messages(system_message, last_message)
+        # Extract the last message content
+        last_message = messages[-1]
+        if isinstance(last_message, dict):
+            last_message_content = last_message.get('content', '')
+        else:
+            last_message_content = str(last_message)
+        
+        api_messages = create_messages(system_message, last_message_content)
         response = llm.create_completion(api_messages)
         
         try:
@@ -129,4 +135,3 @@ message = """Let's write a novel about a professional esports player's journey.
 Start by discussing the basic plot structure and main character."""
 
 user_proxy.initiate_chat(manager, message=message)
-
