@@ -1,12 +1,37 @@
 import autogen
+import requests
+import json
+import os
 
-# Configure the agents
-config_list = [
-    {
-        "model": "gpt-4",
-        "api_key": "your-api-key-here"
-    }
-]
+# OpenRouter API configuration
+OPENROUTER_API_KEY = os.environ['OPENROUTER_API_KEY']
+
+# Custom LLM configuration using OpenRouter
+class OpenRouterLLM:
+    def __init__(self, model="openai/gpt-4o-2024-08-06"):
+        self.model = model
+        
+    def create_completion(self, messages):
+        response = requests.post(
+            url="https://openrouter.ai/api/v1/chat/completions",
+            headers={
+                "Authorization": f"Bearer {OPENROUTER_API_KEY}"
+            },
+            data=json.dumps({
+                "model": self.model,
+                "messages": messages,
+                "top_p": 1,
+                "temperature": 1,
+                "frequency_penalty": 0,
+                "presence_penalty": 0,
+                "repetition_penalty": 1,
+                "top_k": 0,
+            })
+        )
+        return response.json()
+
+# Configure the LLM
+llm = OpenRouterLLM()
 
 # Create assistant configurations
 story_planner_config = {
@@ -39,23 +64,48 @@ narrative_writer_config = {
     - Incorporate gaming terminology and concepts naturally"""
 }
 
+# Custom function to create messages for OpenRouter API
+def create_messages(system_message, user_message):
+    return [
+        {"role": "system", "content": system_message},
+        {"role": "user", "content": user_message}
+    ]
+
+# Initialize the agents with custom configuration
+class CustomAssistantAgent(autogen.AssistantAgent):
+    def generate_reply(self, sender=None, messages=None):
+        if messages is None:
+            messages = self._oai_messages
+            
+        if not messages:
+            return None
+            
+        system_message = self.system_message
+        last_message = messages[-1]['content']
+        
+        api_messages = create_messages(system_message, last_message)
+        response = llm.create_completion(api_messages)
+        
+        try:
+            reply = response['choices'][0]['message']['content']
+            return reply
+        except KeyError:
+            return "I apologize, but I encountered an error processing your request."
+
 # Initialize the agents
-story_planner = autogen.AssistantAgent(
+story_planner = CustomAssistantAgent(
     name="story_planner",
-    system_message=story_planner_config["system_message"],
-    llm_config={"config_list": config_list}
+    system_message=story_planner_config["system_message"]
 )
 
-character_developer = autogen.AssistantAgent(
+character_developer = CustomAssistantAgent(
     name="character_developer",
-    system_message=character_developer_config["system_message"],
-    llm_config={"config_list": config_list}
+    system_message=character_developer_config["system_message"]
 )
 
-narrative_writer = autogen.AssistantAgent(
+narrative_writer = CustomAssistantAgent(
     name="narrative_writer",
-    system_message=narrative_writer_config["system_message"],
-    llm_config={"config_list": config_list}
+    system_message=narrative_writer_config["system_message"]
 )
 
 # Create human user agent
